@@ -1,5 +1,9 @@
 # Summit Breeze
 
+<p align="center">
+  <img src="logo.svg" width="128" height="128" alt="Summit Breeze logo">
+</p>
+
 An LSP server for [SMT-LIB](https://smtlib.cs.uiowa.edu/) files, with a VS Code extension for syntax highlighting and language support.
 
 ## Features
