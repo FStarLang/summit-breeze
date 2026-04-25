@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
 use summit_breeze_lsp::document::DocumentStore;
-use summit_breeze_lsp::symbols::{CommandInfoKind, SymbolKind as SmtSymbolKind};
+use summit_breeze_lsp::symbols::CommandInfoKind;
 
 pub struct Backend {
     client: Client,
