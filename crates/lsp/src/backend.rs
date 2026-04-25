@@ -125,9 +125,28 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // Find definition
+        // Find definition — scope-aware: pick the latest def visible at reference's stack depth
         if let Some(defs) = doc.index.definitions.get(&name) {
-            if let Some(def) = defs.first() {
+            // Find the reference to get its stack depth
+            let ref_depth = doc
+                .index
+                .references
+                .iter()
+                .find(|r| span_contains(r.span, offset))
+                .map(|r| r.stack_depth)
+                .unwrap_or(0);
+
+            // Pick the best definition: must be before the reference, at a stack depth
+            // that's still visible (≤ ref depth), and prefer the latest one
+            let best = defs
+                .iter()
+                .filter(|d| d.name_span.start < offset && d.stack_depth <= ref_depth)
+                .max_by_key(|d| d.name_span.start);
+
+            // Fall back to any definition with the name if scope-aware search fails
+            let def = best.or_else(|| defs.first());
+
+            if let Some(def) = def {
                 return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
                     uri.clone(),
                     doc.span_to_range(def.name_span),

@@ -30,6 +30,8 @@ pub enum SymbolKind {
 pub struct SymbolRef {
     pub name: String,
     pub span: Span,
+    /// Push/pop stack depth at reference site.
+    pub stack_depth: u32,
 }
 
 /// A push/pop pair for navigation.
@@ -188,7 +190,7 @@ pub fn build_index(script: &Script) -> SymbolIndex {
                     );
                 }
                 // Collect references in the body
-                collect_term_refs(&mut index, &def.body);
+                collect_term_refs(&mut index, &def.body, stack_depth);
 
                 let kind = if matches!(&cmd.node, Command::DefineFunRec(_)) {
                     CommandInfoKind::DefineFunRec
@@ -223,7 +225,7 @@ pub fn build_index(script: &Script) -> SymbolIndex {
                             stack_depth,
                         );
                     }
-                    collect_term_refs(&mut index, &def.body);
+                    collect_term_refs(&mut index, &def.body, stack_depth);
                 }
                 index.command_spans.push(CommandInfo {
                     kind: CommandInfoKind::DefineFun,
@@ -274,7 +276,7 @@ pub fn build_index(script: &Script) -> SymbolIndex {
             }
 
             Command::Assert(term) => {
-                collect_term_refs(&mut index, term);
+                collect_term_refs(&mut index, term, stack_depth);
                 index.command_spans.push(CommandInfo {
                     kind: CommandInfoKind::Assert,
                     name: None,
@@ -327,7 +329,7 @@ pub fn build_index(script: &Script) -> SymbolIndex {
             Command::Unknown(_name, args) => {
                 // Collect symbol references from s-expressions in unknown commands
                 for sexpr in args {
-                    collect_sexpr_refs(&mut index, sexpr);
+                    collect_sexpr_refs(&mut index, sexpr, stack_depth);
                 }
                 index.command_spans.push(CommandInfo {
                     kind: CommandInfoKind::Other,
@@ -406,56 +408,59 @@ fn index_datatype_dec(index: &mut SymbolIndex, dec: &Spanned<DatatypeDec>, stack
 }
 
 /// Collect symbol references within a term.
-fn collect_term_refs(index: &mut SymbolIndex, term: &Spanned<Term>) {
+fn collect_term_refs(index: &mut SymbolIndex, term: &Spanned<Term>, stack_depth: u32) {
     match &term.node {
         Term::QualifiedIdentifier(qi) => {
-            collect_qi_ref(index, qi);
+            collect_qi_ref(index, qi, stack_depth);
         }
         Term::Application(func, args) => {
-            collect_qi_ref(index, &func.node);
+            collect_qi_ref(index, &func.node, stack_depth);
             for arg in args {
-                collect_term_refs(index, arg);
+                collect_term_refs(index, arg, stack_depth);
             }
         }
         Term::Let(bindings, body) => {
             for binding in bindings {
-                collect_term_refs(index, &binding.node.value);
+                collect_term_refs(index, &binding.node.value, stack_depth);
                 index.references.push(SymbolRef {
                     name: binding.node.name.node.name.clone(),
                     span: binding.node.name.span,
+                    stack_depth,
                 });
             }
-            collect_term_refs(index, body);
+            collect_term_refs(index, body, stack_depth);
         }
         Term::Forall(vars, body) | Term::Exists(vars, body) | Term::Lambda(vars, body) => {
             for var in vars {
                 index.references.push(SymbolRef {
                     name: var.node.name.node.name.clone(),
                     span: var.node.name.span,
+                    stack_depth,
                 });
             }
-            collect_term_refs(index, body);
+            collect_term_refs(index, body, stack_depth);
         }
         Term::Match(scrutinee, cases) => {
-            collect_term_refs(index, scrutinee);
+            collect_term_refs(index, scrutinee, stack_depth);
             for case in cases {
-                collect_term_refs(index, &case.node.body);
+                collect_term_refs(index, &case.node.body, stack_depth);
             }
         }
         Term::Annotated(inner, _attrs) => {
-            collect_term_refs(index, inner);
+            collect_term_refs(index, inner, stack_depth);
         }
         Term::Constant(_) => {}
     }
 }
 
-fn collect_qi_ref(index: &mut SymbolIndex, qi: &QualifiedIdentifier) {
+fn collect_qi_ref(index: &mut SymbolIndex, qi: &QualifiedIdentifier, stack_depth: u32) {
     match qi {
         QualifiedIdentifier::Simple(ident) => {
             if let Identifier::Simple(sym) = &ident.node {
                 index.references.push(SymbolRef {
                     name: sym.name.clone(),
                     span: ident.span,
+                    stack_depth,
                 });
             }
         }
@@ -464,6 +469,7 @@ fn collect_qi_ref(index: &mut SymbolIndex, qi: &QualifiedIdentifier) {
                 index.references.push(SymbolRef {
                     name: sym.name.clone(),
                     span: ident.span,
+                    stack_depth,
                 });
             }
         }
@@ -471,17 +477,18 @@ fn collect_qi_ref(index: &mut SymbolIndex, qi: &QualifiedIdentifier) {
 }
 
 /// Collect symbol references from s-expressions (for Unknown commands).
-fn collect_sexpr_refs(index: &mut SymbolIndex, sexpr: &Spanned<SExpr>) {
+fn collect_sexpr_refs(index: &mut SymbolIndex, sexpr: &Spanned<SExpr>, stack_depth: u32) {
     match &sexpr.node {
         SExpr::Symbol(sym) => {
             index.references.push(SymbolRef {
                 name: sym.name.clone(),
                 span: sexpr.span,
+                stack_depth,
             });
         }
         SExpr::List(items) => {
             for item in items {
-                collect_sexpr_refs(index, item);
+                collect_sexpr_refs(index, item, stack_depth);
             }
         }
         SExpr::Constant(_) | SExpr::Keyword(_) => {}
