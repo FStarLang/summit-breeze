@@ -154,17 +154,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let kind_label = match def.kind {
-            SmtSymbolKind::Function => "function",
-            SmtSymbolKind::Constant => "constant",
-            SmtSymbolKind::Sort => "sort",
-            SmtSymbolKind::Datatype => "datatype",
-            SmtSymbolKind::Constructor => "constructor",
-            SmtSymbolKind::Selector => "selector",
-            SmtSymbolKind::Variable => "variable",
-        };
-
-        // Extract the source text of the definition
+        // Extract the source text of the definition command
         let def_text = &doc.text[def.def_span.start as usize..def.def_span.end as usize];
         // Truncate long definitions
         let snippet = if def_text.len() > 200 {
@@ -173,7 +163,7 @@ impl LanguageServer for Backend {
             def_text.to_string()
         };
 
-        let contents = format!("**{}** `{}`\n```smtlib\n{}\n```", kind_label, def.name, snippet);
+        let contents = format!("```smtlib\n{}\n```", snippet);
 
         Ok(Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -194,43 +184,45 @@ impl LanguageServer for Backend {
 
         let offset = doc.position_to_offset(pos);
 
-        // Find the symbol name under cursor (could be at a def or a ref site)
-        let symbol_name = doc
+        // Determine which definition the cursor resolves to.
+        // Could be on a ref site or a def site.
+        let target_def = doc
             .index
-            .references
-            .iter()
-            .find(|r| span_contains(r.span, offset))
-            .map(|r| r.name.clone())
+            .ref_at(offset)
+            .and_then(|r| {
+                doc.index
+                    .resolve(&r.name, offset, r.stack_depth)
+            })
             .or_else(|| {
                 doc.index
                     .definitions
-                    .iter()
-                    .find_map(|(name, defs)| {
-                        defs.iter()
-                            .any(|d| span_contains(d.name_span, offset))
-                            .then(|| name.clone())
-                    })
+                    .values()
+                    .flat_map(|v| v.iter())
+                    .find(|d| span_contains(d.name_span, offset))
             });
 
-        let Some(name) = symbol_name else {
+        let Some(target) = target_def else {
             return Ok(None);
         };
 
+        let name = target.name.clone();
+        let target_name_start = target.name_span.start;
+
         let mut locations = Vec::new();
 
-        // Include definition sites if requested
+        // Include definition site if requested
         if params.context.include_declaration {
-            if let Some(defs) = doc.index.definitions.get(&name) {
-                for def in defs {
-                    locations.push(Location::new(uri.clone(), doc.span_to_range(def.name_span)));
-                }
-            }
+            locations.push(Location::new(uri.clone(), doc.span_to_range(target.name_span)));
         }
 
-        // Include all references
+        // Include only references that resolve to the same definition
         for r in &doc.index.references {
             if r.name == name {
-                locations.push(Location::new(uri.clone(), doc.span_to_range(r.span)));
+                if let Some(resolved) = doc.index.resolve(&r.name, r.span.start, r.stack_depth) {
+                    if resolved.name_span.start == target_name_start {
+                        locations.push(Location::new(uri.clone(), doc.span_to_range(r.span)));
+                    }
+                }
             }
         }
 
