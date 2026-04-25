@@ -7,36 +7,173 @@
     "smt"
   ],
   "patterns": [
-    {
-      "name": "comment.line.smtlib",
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#quoted-symbol" },
+    { "include": "#numeric" },
+    { "include": "#keyword-attr" },
+    { "include": "#paren-expression" },
+    { "include": "#builtin-sort" },
+    { "include": "#builtin-constant" },
+    { "include": "#as-keyword" },
+    { "include": "#parentheses" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.semicolon.smtlib",
       "match": ";.*$"
     },
-    {
+    "string": {
       "name": "string.quoted.double.smtlib",
       "begin": "\"",
       "end": "\"",
       "patterns": [
         {
           "name": "constant.character.escape.smtlib",
-          "match": "\\\\."
+          "match": "\"\""
         }
       ]
     },
-    {
-      "name": "punctuation.section.parens.begin.smtlib",
-      "match": "\\("
+    "quoted-symbol": {
+      "name": "string.other.quoted-symbol.smtlib",
+      "begin": "\\|",
+      "end": "\\|"
     },
-    {
-      "name": "punctuation.section.parens.end.smtlib",
-      "match": "\\)"
+    "numeric": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.smtlib",
+          "match": "#x[0-9a-fA-F]+"
+        },
+        {
+          "name": "constant.numeric.binary.smtlib",
+          "match": "#b[01]+"
+        },
+        {
+          "name": "constant.numeric.float.smtlib",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.smtlib",
+          "match": "\\b\\d+\\b"
+        }
+      ]
     },
-    {
-      "name": "keyword.control.smtlib",
-      "match": "\\b(set-logic|set-info|declare-fun|define-fun|assert|check-sat|get-model|exit)\\b"
+    "keyword-attr": {
+      "name": "entity.other.attribute-name.smtlib",
+      "match": ":[a-zA-Z0-9~!@$%^&*_+=<>.?/'-]+"
     },
-    {
-      "name": "constant.numeric.smtlib",
-      "match": "-?\\d+(\\.\\d+)?"
+    "paren-expression": {
+      "begin": "(\\()\\s*(?=([a-zA-Z!_]|\\s))",
+      "beginCaptures": {
+        "1": { "name": "punctuation.paren.smtlib" }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": { "name": "punctuation.paren.smtlib" }
+      },
+      "patterns": [
+        { "include": "#command-logic" },
+        { "include": "#command-declaration" },
+        { "include": "#command-assert" },
+        { "include": "#command-stack" },
+        { "include": "#command-exit" },
+        { "include": "#command-model" },
+        { "include": "#command-echo" },
+        { "include": "#quantifier-binder" },
+        { "include": "#annotation-bang" },
+        { "include": "#indexed-underscore" },
+        { "include": "#comment" },
+        { "include": "#string" },
+        { "include": "#quoted-symbol" },
+        { "include": "#numeric" },
+        { "include": "#keyword-attr" },
+        { "include": "#paren-expression" },
+        { "include": "#builtin-sort" },
+        { "include": "#builtin-constant" },
+        { "include": "#as-keyword" },
+        { "include": "#parentheses" }
+      ]
+    },
+    "command-logic": {
+      "match": "(?<=\\()\\s*(set-logic|set-info|set-option|get-info|get-option)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.control.smtlib" }
+      }
+    },
+    "command-declaration": {
+      "match": "(?<=\\()\\s*(declare-fun|declare-const|declare-sort|define-fun|define-sort|define-fun-rec|define-funs-rec|declare-datatype|declare-datatypes)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.declaration.smtlib" }
+      }
+    },
+    "command-assert": {
+      "match": "(?<=\\()\\s*(assert|check-sat|check-sat-assuming)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.control.assert.smtlib" }
+      }
+    },
+    "command-stack": {
+      "match": "(?<=\\()\\s*(push|pop|reset|reset-assertions)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.control.stack.smtlib" }
+      }
+    },
+    "command-exit": {
+      "match": "(?<=\\()\\s*(exit)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.control.smtlib" }
+      }
+    },
+    "command-model": {
+      "match": "(?<=\\()\\s*(get-model|get-value|get-proof|get-unsat-core|get-unsat-assumptions|get-assertions)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.other.smtlib" }
+      }
+    },
+    "command-echo": {
+      "match": "(?<=\\()\\s*(echo|simplify|eval)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.other.smtlib" }
+      }
+    },
+    "quantifier-binder": {
+      "match": "(?<=\\()\\s*(forall|exists|let|match|lambda)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.control.smtlib" }
+      }
+    },
+    "annotation-bang": {
+      "match": "(?<=\\()\\s*(!)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.operator.annotation.smtlib" }
+      }
+    },
+    "indexed-underscore": {
+      "match": "(?<=\\()\\s*(_)(?=[\\s()])",
+      "captures": {
+        "1": { "name": "keyword.operator.indexed.smtlib" }
+      }
+    },
+    "builtin-sort": {
+      "name": "support.type.smtlib",
+      "match": "\\b(Bool|Int|Real|String|RegLan|RoundingMode|Float16|Float32|Float64|Float128|BitVec|Array)\\b"
+    },
+    "builtin-constant": {
+      "name": "constant.language.smtlib",
+      "match": "\\b(true|false)\\b"
+    },
+    "as-keyword": {
+      "name": "keyword.operator.as.smtlib",
+      "match": "\\b(as)\\b"
+    },
+    "parentheses": {
+      "patterns": [
+        {
+          "name": "punctuation.paren.smtlib",
+          "match": "[()]"
+        }
+      ]
     }
-  ]
+  }
 }
