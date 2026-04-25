@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
 use summit_breeze_lsp::document::DocumentStore;
-use summit_breeze_lsp::symbols::CommandInfoKind;
+use summit_breeze_lsp::symbols::{CommandInfoKind, SymbolKind as SmtSymbolKind};
 
 pub struct Backend {
     client: Client,
@@ -49,6 +49,7 @@ impl LanguageServer for Backend {
                 )),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 ..Default::default()
@@ -113,40 +114,9 @@ impl LanguageServer for Backend {
             }
         }
 
-        // Find the symbol under cursor from references
-        let symbol_name = doc
-            .index
-            .references
-            .iter()
-            .find(|r| span_contains(r.span, offset))
-            .map(|r| r.name.clone());
-
-        let Some(name) = symbol_name else {
-            return Ok(None);
-        };
-
-        // Find definition — scope-aware: pick the latest def visible at reference's stack depth
-        if let Some(defs) = doc.index.definitions.get(&name) {
-            // Find the reference to get its stack depth
-            let ref_depth = doc
-                .index
-                .references
-                .iter()
-                .find(|r| span_contains(r.span, offset))
-                .map(|r| r.stack_depth)
-                .unwrap_or(0);
-
-            // Pick the best definition: must be before the reference, at a stack depth
-            // that's still visible (≤ ref depth), and prefer the latest one
-            let best = defs
-                .iter()
-                .filter(|d| d.name_span.start < offset && d.stack_depth <= ref_depth)
-                .max_by_key(|d| d.name_span.start);
-
-            // Fall back to any definition with the name if scope-aware search fails
-            let def = best.or_else(|| defs.first());
-
-            if let Some(def) = def {
+        // Find the reference under cursor and resolve its definition
+        if let Some(sym_ref) = doc.index.ref_at(offset) {
+            if let Some(def) = doc.index.resolve(&sym_ref.name, offset, sym_ref.stack_depth) {
                 return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
                     uri.clone(),
                     doc.span_to_range(def.name_span),
@@ -155,6 +125,63 @@ impl LanguageServer for Backend {
         }
 
         Ok(None)
+    }
+
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let pos = params.text_document_position_params.position;
+
+        let Some(doc) = self.store.get(uri) else {
+            return Ok(None);
+        };
+
+        let offset = doc.position_to_offset(pos);
+
+        // Try reference under cursor first
+        let resolved = doc.index.ref_at(offset).and_then(|sym_ref| {
+            doc.index
+                .resolve(&sym_ref.name, offset, sym_ref.stack_depth)
+        });
+
+        // Also check if cursor is on a definition site directly
+        let def = resolved.or_else(|| {
+            doc.index.definitions.values().flat_map(|v| v.iter()).find(|d| {
+                span_contains(d.name_span, offset)
+            })
+        });
+
+        let Some(def) = def else {
+            return Ok(None);
+        };
+
+        let kind_label = match def.kind {
+            SmtSymbolKind::Function => "function",
+            SmtSymbolKind::Constant => "constant",
+            SmtSymbolKind::Sort => "sort",
+            SmtSymbolKind::Datatype => "datatype",
+            SmtSymbolKind::Constructor => "constructor",
+            SmtSymbolKind::Selector => "selector",
+            SmtSymbolKind::Variable => "variable",
+        };
+
+        // Extract the source text of the definition
+        let def_text = &doc.text[def.def_span.start as usize..def.def_span.end as usize];
+        // Truncate long definitions
+        let snippet = if def_text.len() > 200 {
+            format!("{}…", &def_text[..200])
+        } else {
+            def_text.to_string()
+        };
+
+        let contents = format!("**{}** `{}`\n```smtlib\n{}\n```", kind_label, def.name, snippet);
+
+        Ok(Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: contents,
+            }),
+            range: None,
+        }))
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {

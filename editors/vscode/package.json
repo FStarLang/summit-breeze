@@ -22,7 +22,8 @@
         "aliases": [
           "SMT-LIB",
           "smtlib"
-        ]
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
