@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.vscode-target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vscode-target: linux-x64
+            os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+            binary: summit-breeze-lsp
+          - vscode-target: linux-arm64
+            os: ubuntu-latest
+            rust-target: aarch64-unknown-linux-gnu
+            binary: summit-breeze-lsp
+            cross: true
+          - vscode-target: darwin-x64
+            os: macos-13
+            rust-target: x86_64-apple-darwin
+            binary: summit-breeze-lsp
+          - vscode-target: darwin-arm64
+            os: macos-14
+            rust-target: aarch64-apple-darwin
+            binary: summit-breeze-lsp
+          - vscode-target: win32-x64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            binary: summit-breeze-lsp.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Install cross-compilation tools (linux-arm64)
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
+          echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.rust-target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust-target }}-cargo-
+
+      - name: Test (native only)
+        if: ${{ !matrix.cross }}
+        run: cargo test --workspace
+
+      - name: Build release binary
+        run: cargo build --release --bin summit-breeze-lsp --target ${{ matrix.rust-target }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Prepare extension
+        shell: bash
+        run: |
+          cd editors/vscode
+          npm ci
+          npx tsc -p .
+          mkdir -p server
+          cp ../../target/${{ matrix.rust-target }}/release/${{ matrix.binary }} server/
+          chmod +x server/${{ matrix.binary }} || true
+
+      - name: Package VSIX
+        shell: bash
+        run: |
+          cd editors/vscode
+          npx @vscode/vsce package --target ${{ matrix.vscode-target }} \
+            --no-git-tag-version --no-update-package-json \
+            --allow-missing-repository
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.vscode-target }}
+          path: editors/vscode/*.vsix
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all VSIX artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vsix-*
+          merge-multiple: true
+          path: vsix/
+
+      - name: List artifacts
+        run: ls -lh vsix/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          files: vsix/*.vsix

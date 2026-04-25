@@ -74,7 +74,7 @@ echo "==> Compiling TypeScript..."
 npx tsc -p .
 
 echo "==> Packaging VSIX for $VSCODE_TARGET..."
-npx @vscode/vsce package --target "$VSCODE_TARGET" --no-git-tag-version --no-update-package-json
+npx @vscode/vsce package --target "$VSCODE_TARGET" --no-git-tag-version --no-update-package-json --allow-missing-repository
 
 # Verify VSIX contents
 VSIX_FILE=$(ls -t *.vsix 2>/dev/null | head -1)
