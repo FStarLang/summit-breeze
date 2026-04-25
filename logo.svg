@@ -38,9 +38,9 @@
   <polygon points="230,170 220,190 256,185 290,190 282,170" fill="#e2e8f0"/>
 
   <!-- Wind streaks (breeze) — three curved lines flowing past the peak -->
-  <path d="M 100,195 Q 200,180 310,200" stroke="url(#wind1)" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M 80,230 Q 190,210 340,235" stroke="url(#wind2)" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <path d="M 120,260 Q 220,245 360,265" stroke="url(#wind3)" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M 70,190 Q 200,170 340,200" stroke="url(#wind1)" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M 50,230 Q 190,200 370,238" stroke="url(#wind2)" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M 90,265 Q 220,240 390,270" stroke="url(#wind3)" stroke-width="6" fill="none" stroke-linecap="round"/>
 
   <!-- Subtle code brackets: ( ) hinting at s-expressions -->
   <text x="148" y="400" font-family="monospace" font-size="56" font-weight="bold" fill="#38bdf8" opacity="0.7">(</text>
