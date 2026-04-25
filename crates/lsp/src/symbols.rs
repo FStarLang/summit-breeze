@@ -82,7 +82,7 @@ impl SymbolIndex {
             .filter(|d| {
                 d.name_span.start < offset
                     && d.stack_depth <= ref_depth
-                    && d.scope_end.map_or(true, |end| offset <= end)
+                    && d.scope_end.is_none_or(|end| offset <= end)
             })
             .max_by_key(|d| d.name_span.start);
 
@@ -532,10 +532,10 @@ fn collect_term_refs(index: &mut SymbolIndex, term: &Spanned<Term>, stack_depth:
             // Walk :pattern and :no-pattern attribute values for refs
             for attr in attrs {
                 let kw = &attr.keyword.node;
-                if kw == ":pattern" || kw == ":no-pattern" {
-                    if let Some(val) = &attr.value {
-                        collect_attr_value_refs(index, &val.node, stack_depth);
-                    }
+                if (kw == ":pattern" || kw == ":no-pattern")
+                    && let Some(val) = &attr.value
+                {
+                    collect_attr_value_refs(index, &val.node, stack_depth);
                 }
             }
         }

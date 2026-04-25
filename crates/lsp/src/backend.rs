@@ -95,33 +95,33 @@ impl LanguageServer for Backend {
 
         // Check if cursor is on a push — jump to matching pop
         for pair in &doc.index.push_pop_pairs {
-            if span_contains(pair.push_span, offset) {
-                if let Some(pop_span) = pair.pop_span {
-                    return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
-                        uri.clone(),
-                        doc.span_to_range(pop_span),
-                    ))));
-                }
+            if span_contains(pair.push_span, offset)
+                && let Some(pop_span) = pair.pop_span
+            {
+                return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
+                    uri.clone(),
+                    doc.span_to_range(pop_span),
+                ))));
             }
             // Check if cursor is on a pop — jump to matching push
-            if let Some(pop_span) = pair.pop_span {
-                if span_contains(pop_span, offset) {
-                    return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
-                        uri.clone(),
-                        doc.span_to_range(pair.push_span),
-                    ))));
-                }
+            if let Some(pop_span) = pair.pop_span
+                && span_contains(pop_span, offset)
+            {
+                return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
+                    uri.clone(),
+                    doc.span_to_range(pair.push_span),
+                ))));
             }
         }
 
         // Find the reference under cursor and resolve its definition
-        if let Some(sym_ref) = doc.index.ref_at(offset) {
-            if let Some(def) = doc.index.resolve(&sym_ref.name, offset, sym_ref.stack_depth) {
-                return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
-                    uri.clone(),
-                    doc.span_to_range(def.name_span),
-                ))));
-            }
+        if let Some(sym_ref) = doc.index.ref_at(offset)
+            && let Some(def) = doc.index.resolve(&sym_ref.name, offset, sym_ref.stack_depth)
+        {
+            return Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
+                uri.clone(),
+                doc.span_to_range(def.name_span),
+            ))));
         }
 
         Ok(None)
@@ -217,12 +217,11 @@ impl LanguageServer for Backend {
 
         // Include only references that resolve to the same definition
         for r in &doc.index.references {
-            if r.name == name {
-                if let Some(resolved) = doc.index.resolve(&r.name, r.span.start, r.stack_depth) {
-                    if resolved.name_span.start == target_name_start {
-                        locations.push(Location::new(uri.clone(), doc.span_to_range(r.span)));
-                    }
-                }
+            if r.name == name
+                && let Some(resolved) = doc.index.resolve(&r.name, r.span.start, r.stack_depth)
+                && resolved.name_span.start == target_name_start
+            {
+                locations.push(Location::new(uri.clone(), doc.span_to_range(r.span)));
             }
         }
 
