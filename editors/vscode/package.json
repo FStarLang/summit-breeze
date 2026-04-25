@@ -1,0 +1,47 @@
+{
+  "name": "summit-breeze",
+  "displayName": "Summit Breeze",
+  "description": "SMT-LIB language support via LSP",
+  "version": "0.1.0",
+  "publisher": "summit-breeze",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onLanguage:smtlib"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "smtlib",
+        "extensions": [
+          ".smt2",
+          ".smt"
+        ],
+        "aliases": [
+          "SMT-LIB",
+          "smtlib"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "smtlib",
+        "scopeName": "source.smtlib",
+        "path": "./syntaxes/smtlib.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.3",
+    "vscode-languageclient": "^9.0.0"
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p ."
+  }
+}

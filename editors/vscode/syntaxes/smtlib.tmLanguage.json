@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "SMT-LIB",
+  "scopeName": "source.smtlib",
+  "fileTypes": [
+    "smt2",
+    "smt"
+  ],
+  "patterns": [
+    {
+      "name": "comment.line.smtlib",
+      "match": ";.*$"
+    },
+    {
+      "name": "string.quoted.double.smtlib",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.smtlib",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "punctuation.section.parens.begin.smtlib",
+      "match": "\\("
+    },
+    {
+      "name": "punctuation.section.parens.end.smtlib",
+      "match": "\\)"
+    },
+    {
+      "name": "keyword.control.smtlib",
+      "match": "\\b(set-logic|set-info|declare-fun|define-fun|assert|check-sat|get-model|exit)\\b"
+    },
+    {
+      "name": "constant.numeric.smtlib",
+      "match": "-?\\d+(\\.\\d+)?"
+    }
+  ]
+}
