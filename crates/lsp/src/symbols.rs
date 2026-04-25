@@ -324,6 +324,19 @@ pub fn build_index(script: &Script) -> SymbolIndex {
                 });
             }
 
+            Command::Unknown(_name, args) => {
+                // Collect symbol references from s-expressions in unknown commands
+                for sexpr in args {
+                    collect_sexpr_refs(&mut index, sexpr);
+                }
+                index.command_spans.push(CommandInfo {
+                    kind: CommandInfoKind::Other,
+                    name: None,
+                    span,
+                    stack_depth,
+                });
+            }
+
             _ => {
                 index.command_spans.push(CommandInfo {
                     kind: CommandInfoKind::Other,
@@ -457,6 +470,24 @@ fn collect_qi_ref(index: &mut SymbolIndex, qi: &QualifiedIdentifier) {
     }
 }
 
+/// Collect symbol references from s-expressions (for Unknown commands).
+fn collect_sexpr_refs(index: &mut SymbolIndex, sexpr: &Spanned<SExpr>) {
+    match &sexpr.node {
+        SExpr::Symbol(sym) => {
+            index.references.push(SymbolRef {
+                name: sym.name.clone(),
+                span: sexpr.span,
+            });
+        }
+        SExpr::List(items) => {
+            for item in items {
+                collect_sexpr_refs(index, item);
+            }
+        }
+        SExpr::Constant(_) | SExpr::Keyword(_) => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,5 +544,16 @@ mod tests {
         assert!(index.definitions.contains_key("Blue"));
         assert_eq!(index.definitions["Color"][0].kind, SymbolKind::Datatype);
         assert_eq!(index.definitions["Red"][0].kind, SymbolKind::Constructor);
+    }
+
+    #[test]
+    fn test_assert_not_references() {
+        let src = "(declare-fun foo (Int) Int)\n(assert-not (= (foo 10) 20))";
+        let result = parse(src);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let index = build_index(&result.script);
+        assert!(index.definitions.contains_key("foo"));
+        let foo_refs: Vec<_> = index.references.iter().filter(|r| r.name == "foo").collect();
+        assert!(!foo_refs.is_empty(), "foo should have references inside assert-not");
     }
 }

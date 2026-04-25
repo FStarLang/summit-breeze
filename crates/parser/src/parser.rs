@@ -172,7 +172,7 @@ impl<'a> Parser<'a> {
             "define-funs-rec" => self.parse_define_funs_rec(),
             "declare-datatype" => self.parse_declare_datatype(),
             "declare-datatypes" => self.parse_declare_datatypes(),
-            "assert" => self.parse_assert(),
+            "assert" | "assert-not" => self.parse_assert(),
             "check-sat" => Some(Command::CheckSat),
             "check-sat-assuming" => self.parse_check_sat_assuming(),
             "push" => self.parse_push(),
