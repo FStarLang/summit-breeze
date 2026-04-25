@@ -32,7 +32,17 @@
         "scopeName": "source.smtlib",
         "path": "./syntaxes/smtlib.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Summit Breeze",
+      "properties": {
+        "summitBreeze.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the summit-breeze-lsp binary. Leave empty to use the bundled binary (or fall back to PATH for development)."
+        }
+      }
+    }
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

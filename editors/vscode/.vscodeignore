@@ -1,0 +1,12 @@
+# Source files (not needed at runtime)
+src/**
+tsconfig.json
+*.ts
+!out/**
+
+# Dev tooling
+.vscode/**
+node_modules/.package-lock.json
+
+# Git/misc
+.gitignore

@@ -10,6 +10,7 @@
 # VS Code extension build output
 editors/vscode/out/
 editors/vscode/node_modules/
+editors/vscode/server/
 editors/vscode/*.vsix
 
 # OS files

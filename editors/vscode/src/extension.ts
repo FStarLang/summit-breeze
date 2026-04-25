@@ -1,27 +1,39 @@
+import * as path from 'path';
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
-import { execFileSync } from 'child_process';
 
 let client: LanguageClient | undefined;
 
-function findServerCommand(): string | undefined {
-	const command = 'summit-breeze-lsp';
-	try {
-		execFileSync('which', [command], { stdio: 'ignore' });
-		return command;
-	} catch {
+function findServerCommand(context: vscode.ExtensionContext): string | undefined {
+	// 1. User-configured path (for debugging / local builds)
+	const config = vscode.workspace.getConfiguration('summitBreeze');
+	const configPath = config.get<string>('serverPath', '').trim();
+	if (configPath) {
+		if (fs.existsSync(configPath)) {
+			return configPath;
+		}
+		vscode.window.showErrorMessage(
+			`Summit Breeze: configured server path does not exist: ${configPath}`
+		);
 		return undefined;
 	}
+
+	// 2. Bundled binary in extension
+	const binaryName = process.platform === 'win32' ? 'summit-breeze-lsp.exe' : 'summit-breeze-lsp';
+	const bundledPath = path.join(context.extensionPath, 'server', binaryName);
+	if (fs.existsSync(bundledPath)) {
+		return bundledPath;
+	}
+
+	// 3. Fall back to PATH (for development)
+	return 'summit-breeze-lsp';
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	const serverCommand = findServerCommand();
+	const serverCommand = findServerCommand(context);
 
 	if (!serverCommand) {
-		const msg = 'summit-breeze-lsp binary not found on PATH. ' +
-			'Install it with `cargo install --path crates/summit-breeze-lsp` or add it to your PATH.';
-		vscode.window.showWarningMessage(msg);
-		console.error(`[Summit Breeze] ${msg}`);
 		return;
 	}
 
