@@ -6,8 +6,9 @@ An LSP server for [SMT-LIB](https://smtlib.cs.uiowa.edu/) files, with a VS Code 
 
 ### LSP Server (Rust)
 - **Full SMT-LIB v2.6 parser** with Z3 extension support
-- **Go-to-definition** — jump to declarations of functions, constants, sorts, variables
-- **Find references** — find all uses of a symbol in the document
+- **Go-to-definition** — jump to declarations of functions, constants, sorts, variables, and local bindings (forall/exists/let)
+- **Find references** — scope-aware: only shows references to the specific definition under cursor
+- **Hover** — shows the source definition of a symbol
 - **Push/Pop navigation** — go-to-definition on `push` jumps to matching `pop` and vice versa
 - **Document outline** — structured view of declarations, assertions, push/pop blocks
 - **Folding** — fold top-level commands and push/pop blocks
@@ -17,8 +18,55 @@ An LSP server for [SMT-LIB](https://smtlib.cs.uiowa.edu/) files, with a VS Code 
 
 ### VS Code Extension
 - Syntax highlighting for `.smt2` and `.smt` files (TextMate grammar)
-- Automatic LSP server startup via stdio transport
-- Language registration for SMT-LIB
+- Automatic LSP server startup (bundled binary, no separate install needed)
+- Bracket matching, auto-closing pairs, and SMT-LIB-aware word selection
+- Configurable server path for development/debugging
+
+## Installation
+
+### From a Release (recommended)
+
+Download the `.vsix` for your platform from the [Releases](https://github.com/FStarLang/summit-breeze/releases) page, then:
+
+```bash
+code --install-extension summit-breeze-<platform>-<version>.vsix
+```
+
+The extension bundles the LSP server binary — no additional setup required.
+
+### From Source
+
+```bash
+# Clone
+git clone https://github.com/FStarLang/summit-breeze.git
+cd summit-breeze
+
+# Build and package the VSIX for your platform
+./package.sh
+
+# Install the resulting .vsix
+code --install-extension editors/vscode/summit-breeze-*.vsix
+```
+
+#### Prerequisites
+- Rust 1.75+ (2024 edition)
+- Node.js 18+ (for the VS Code extension)
+
+### Development Setup
+
+For development, you can skip the VSIX and run the LSP binary directly:
+
+```bash
+cargo build --release --bin summit-breeze-lsp
+```
+
+Then either add `target/release/` to your PATH (the extension falls back to PATH lookup), or set the `summitBreeze.serverPath` setting in VS Code to the binary path.
+
+## Configuration
+
+| Setting | Description |
+|---------|-------------|
+| `summitBreeze.serverPath` | Path to a custom `summit-breeze-lsp` binary. Leave empty to use the bundled binary. |
 
 ## Project Structure
 
@@ -27,28 +75,9 @@ summit-breeze/
 ├── crates/
 │   ├── parser/          # smtlib-parser: lexer, AST, recursive descent parser
 │   └── lsp/             # summit-breeze-lsp: LSP server binary
-└── editors/
-    └── vscode/          # VS Code extension
-```
-
-## Building
-
-### Prerequisites
-- Rust 1.75+ (2024 edition)
-- Node.js 18+ (for the VS Code extension)
-
-### LSP Server
-```bash
-cargo build --release -p summit-breeze-lsp
-```
-
-The binary is at `target/release/summit-breeze-lsp`.
-
-### VS Code Extension
-```bash
-cd editors/vscode
-npm install
-npm run compile
+├── editors/
+│   └── vscode/          # VS Code extension
+└── package.sh           # Build + package script
 ```
 
 ## Running Tests
@@ -67,14 +96,8 @@ cargo test -p summit-breeze-lsp
 cargo run --release --example bench -p smtlib-parser
 ```
 
-## Usage
+## Other Editors
 
-### VS Code
-1. Build the LSP server (`cargo build --release -p summit-breeze-lsp`)
-2. Add `target/release/` to your PATH (or configure the extension)
-3. Open a `.smt2` file in VS Code
-
-### Other Editors
 The LSP server communicates over stdio. Configure your editor's LSP client to launch `summit-breeze-lsp` with stdio transport.
 
 ## Supported SMT-LIB Commands
@@ -98,4 +121,4 @@ The LSP server communicates over stdio. Configure your editor's LSP client to la
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](LICENSE) for details.

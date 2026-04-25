@@ -4,6 +4,11 @@
   "description": "SMT-LIB language support via LSP",
   "version": "0.1.0",
   "publisher": "summit-breeze",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FStarLang/summit-breeze"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
