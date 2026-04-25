@@ -1,0 +1,11 @@
+[package]
+name = "summit-breeze-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+smtlib-parser = { path = "../parser" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+dashmap = "6"
