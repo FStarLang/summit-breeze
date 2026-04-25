@@ -234,7 +234,12 @@ impl<'a> Parser<'a> {
 
     fn parse_declare_sort(&mut self) -> Option<Command> {
         let name = self.parse_spanned_symbol()?;
-        let arity = self.parse_numeral_value()?;
+        // Arity is optional — defaults to 0 (Z3 extension)
+        let arity = if self.peek_is(TokenKind::Numeral) {
+            self.parse_numeral_value()?
+        } else {
+            0
+        };
         Some(Command::DeclareSort(name, arity))
     }
 
@@ -319,26 +324,58 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_declare_datatypes(&mut self) -> Option<Command> {
-        // ( declare-datatypes ( (name arity)+ ) ( dec+ ) )
+        // Supports both syntaxes:
+        // SMT-LIB 2.6: (declare-datatypes ((name arity)+) (dec+))
+        // Z3 legacy:   (declare-datatypes () ((TypeName (Ctor ...) ...)+))
         self.expect_lparen()?;
-        let mut sort_decs = Vec::new();
-        while !self.peek_is(TokenKind::RParen) {
-            self.expect_lparen()?;
-            let name = self.parse_spanned_symbol()?;
-            let arity = self.parse_numeral_value()?;
+
+        if self.peek_is(TokenKind::RParen) {
+            // Z3 legacy syntax: (declare-datatypes () ((TypeName ctors...) ...))
             self.expect_rparen()?;
-            sort_decs.push((name, arity));
-        }
-        self.expect_rparen()?;
+            self.expect_lparen()?;
+            let mut sort_decs = Vec::new();
+            let mut decs = Vec::new();
+            while !self.peek_is(TokenKind::RParen) {
+                // Each entry: (TypeName (Ctor (sel Sort)?)+ )
+                let lp = self.expect_lparen()?;
+                let name = self.parse_spanned_symbol()?;
+                let mut ctors = Vec::new();
+                while !self.peek_is(TokenKind::RParen) {
+                    ctors.push(self.parse_constructor_dec()?);
+                }
+                let rp = self.expect_rparen()?;
+                sort_decs.push((name.clone(), 0u64));
+                decs.push(Spanned::new(
+                    DatatypeDec {
+                        params: Vec::new(),
+                        constructors: ctors,
+                    },
+                    Span::new(lp.span.start, rp.span.end),
+                ));
+            }
+            self.expect_rparen()?;
+            Some(Command::DeclareDatatypes(sort_decs, decs))
+        } else {
+            // SMT-LIB 2.6 syntax: (declare-datatypes ((name arity)+) (dec+))
+            let mut sort_decs = Vec::new();
+            while !self.peek_is(TokenKind::RParen) {
+                self.expect_lparen()?;
+                let name = self.parse_spanned_symbol()?;
+                let arity = self.parse_numeral_value()?;
+                self.expect_rparen()?;
+                sort_decs.push((name, arity));
+            }
+            self.expect_rparen()?;
 
-        self.expect_lparen()?;
-        let mut decs = Vec::new();
-        while !self.peek_is(TokenKind::RParen) {
-            decs.push(self.parse_datatype_dec()?);
-        }
-        self.expect_rparen()?;
+            self.expect_lparen()?;
+            let mut decs = Vec::new();
+            while !self.peek_is(TokenKind::RParen) {
+                decs.push(self.parse_datatype_dec()?);
+            }
+            self.expect_rparen()?;
 
-        Some(Command::DeclareDatatypes(sort_decs, decs))
+            Some(Command::DeclareDatatypes(sort_decs, decs))
+        }
     }
 
     fn parse_assert(&mut self) -> Option<Command> {
@@ -801,15 +838,25 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_spanned_identifier(&mut self) -> Option<Spanned<Identifier>> {
-        let start = self.peek()?.span.start;
-        let ident = self.parse_identifier()?;
-        // The end position is approximate — we've consumed the tokens
-        let end = self
-            .peeked
-            .as_ref()
-            .map(|t| t.span.start)
-            .unwrap_or(self.src.len() as u32);
-        Some(Spanned::new(ident, Span::new(start, end)))
+        let tok = self.peek()?;
+        let start = tok.span.start;
+
+        if tok.kind == TokenKind::LParen {
+            let ident = self.parse_identifier()?;
+            // For indexed identifiers, the closing ) was consumed by parse_identifier.
+            // Use position just after the last consumed token.
+            let end = self
+                .peeked
+                .as_ref()
+                .map(|t| t.span.start)
+                .unwrap_or(self.src.len() as u32);
+            Some(Spanned::new(ident, Span::new(start, end)))
+        } else {
+            // Simple identifier — span is just the symbol token
+            let end = tok.span.end;
+            let ident = self.parse_identifier()?;
+            Some(Spanned::new(ident, Span::new(start, end)))
+        }
     }
 
     /// Parse a qualified identifier in non-compound context.
@@ -1272,5 +1319,73 @@ mod tests {
         let result = parse(src);
         assert_eq!(result.script.commands.len(), 1);
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_declare_sort_no_arity() {
+        // Z3 extension: declare-sort without arity defaults to 0
+        let result = parse("(declare-sort MySort)");
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        match &result.script.commands[0].node {
+            Command::DeclareSort(name, arity) => {
+                assert_eq!(name.node.name, "MySort");
+                assert_eq!(*arity, 0);
+            }
+            other => panic!("expected DeclareSort, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_z3_legacy_declare_datatypes() {
+        // Z3 legacy syntax: (declare-datatypes () ((TypeName (Ctor1) (Ctor2 (field Sort)))))
+        let src = "(declare-datatypes () ((Fuel (ZFuel) (SFuel (prec Fuel)))))";
+        let result = parse(src);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        match &result.script.commands[0].node {
+            Command::DeclareDatatypes(sorts, decs) => {
+                assert_eq!(sorts.len(), 1);
+                assert_eq!(sorts[0].0.node.name, "Fuel");
+                assert_eq!(decs[0].node.constructors.len(), 2);
+                assert_eq!(decs[0].node.constructors[0].node.name.node.name, "ZFuel");
+                assert_eq!(decs[0].node.constructors[1].node.name.node.name, "SFuel");
+                assert_eq!(decs[0].node.constructors[1].node.selectors.len(), 1);
+                assert_eq!(decs[0].node.constructors[1].node.selectors[0].name.node.name, "prec");
+            }
+            other => panic!("expected DeclareDatatypes, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_identifier_span_precision() {
+        // Verify that simple identifier references have tight spans
+        let src = "(assert (= foo bar))";
+        let result = parse(src);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        match &result.script.commands[0].node {
+            Command::Assert(term) => match &term.node {
+                Term::Application(func, args) => {
+                    // '=' should have a tight span
+                    let eq_span = func.span;
+                    assert_eq!(&src[eq_span.start as usize..eq_span.end as usize], "=");
+                    // 'foo' and 'bar' should have tight spans
+                    for arg in args {
+                        match &arg.node {
+                            Term::QualifiedIdentifier(QualifiedIdentifier::Simple(ident)) => {
+                                let text =
+                                    &src[ident.span.start as usize..ident.span.end as usize];
+                                assert!(
+                                    text == "foo" || text == "bar",
+                                    "unexpected ident text: '{}'",
+                                    text
+                                );
+                            }
+                            other => panic!("expected QualifiedIdentifier, got {:?}", other),
+                        }
+                    }
+                }
+                other => panic!("expected Application, got {:?}", other),
+            },
+            other => panic!("expected Assert, got {:?}", other),
+        }
     }
 }
