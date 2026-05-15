@@ -540,7 +540,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "smtlib-parser"
-version = "0.2.4"
+version = "0.2.5"
 
 [[package]]
 name = "socket2"
@@ -560,7 +560,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "summit-breeze-lsp"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "dashmap 6.1.0",
  "smtlib-parser",
