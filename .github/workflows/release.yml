@@ -79,6 +79,7 @@ jobs:
       - name: Package VSIX
         shell: bash
         run: |
+          cp README.md editors/vscode
           cd editors/vscode
           npx @vscode/vsce package --target ${{ matrix.vscode-target }} \
             --no-git-tag-version --no-update-package-json \
