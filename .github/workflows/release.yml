@@ -79,7 +79,7 @@ jobs:
       - name: Package VSIX
         shell: bash
         run: |
-          cp README.md editors/vscode
+          sed 's,logo.svg,https://raw.githubusercontent.com/FStarLang/summit-breeze/refs/heads/master/editors/vscode/icon.png,' README.md >editors/vscode/README.md
           cd editors/vscode
           npx @vscode/vsce package --target ${{ matrix.vscode-target }} \
             --no-git-tag-version --no-update-package-json \
