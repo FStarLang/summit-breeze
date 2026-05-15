@@ -97,6 +97,8 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    environment: vsm-deploy
+    permissions: write-all
     steps:
       - uses: actions/checkout@v4
 
