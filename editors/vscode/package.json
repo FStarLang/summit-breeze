@@ -3,7 +3,7 @@
   "displayName": "Summit Breeze",
   "description": "SMT-LIB language support via LSP",
   "version": "0.1.0",
-  "publisher": "summit-breeze",
+  "publisher": "FStarLang",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
