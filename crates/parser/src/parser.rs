@@ -187,7 +187,7 @@ impl<'a> Parser<'a> {
             "declare-datatype" => self.parse_declare_datatype(),
             "declare-datatypes" => self.parse_declare_datatypes(),
             "assert" | "assert-not" => self.parse_assert(),
-            "check-sat" => Some(Command::CheckSat),
+            "check-sat" => self.parse_check_sat(),
             "check-sat-assuming" => self.parse_check_sat_assuming(),
             "push" => self.parse_push(),
             "pop" => self.parse_pop(),
@@ -334,6 +334,10 @@ impl<'a> Parser<'a> {
     fn parse_declare_datatype(&mut self) -> Option<Command> {
         let name = self.parse_spanned_symbol()?;
         let dec = self.parse_datatype_dec()?;
+        // Skip trailing attributes (Z3 extension, e.g., :subterm)
+        while self.peek_is(TokenKind::Keyword) {
+            self.parse_attribute()?;
+        }
         Some(Command::DeclareDatatype(name, dec))
     }
 
@@ -341,35 +345,18 @@ impl<'a> Parser<'a> {
         // Supports both syntaxes:
         // SMT-LIB 2.6: (declare-datatypes ((name arity)+) (dec+))
         // Z3 legacy:   (declare-datatypes () ((TypeName (Ctor ...) ...)+))
+        // Z3 parametric legacy: (declare-datatypes (T1 T2...) ((TypeName (Ctor ...) ...)+))
         self.expect_lparen()?;
 
+        // Determine which syntax by looking at what's inside the first list.
+        // If it starts with ( it's SMT-LIB 2.6: ((name arity) ...)
+        // If it starts with ) it's Z3 legacy with no params: ()
+        // If it starts with a symbol it's Z3 parametric legacy: (T1 T2 ...)
         if self.peek_is(TokenKind::RParen) {
-            // Z3 legacy syntax: (declare-datatypes () ((TypeName ctors...) ...))
+            // Z3 legacy syntax with no type params: (declare-datatypes () ((TypeName ctors...) ...))
             self.expect_rparen()?;
-            self.expect_lparen()?;
-            let mut sort_decs = Vec::new();
-            let mut decs = Vec::new();
-            while !self.peek_is(TokenKind::RParen) {
-                // Each entry: (TypeName (Ctor (sel Sort)?)+ )
-                let lp = self.expect_lparen()?;
-                let name = self.parse_spanned_symbol()?;
-                let mut ctors = Vec::new();
-                while !self.peek_is(TokenKind::RParen) {
-                    ctors.push(self.parse_constructor_dec()?);
-                }
-                let rp = self.expect_rparen()?;
-                sort_decs.push((name.clone(), 0u64));
-                decs.push(Spanned::new(
-                    DatatypeDec {
-                        params: Vec::new(),
-                        constructors: ctors,
-                    },
-                    Span::new(lp.span.start, rp.span.end),
-                ));
-            }
-            self.expect_rparen()?;
-            Some(Command::DeclareDatatypes(sort_decs, decs))
-        } else {
+            self.parse_legacy_datatypes_body(Vec::new())
+        } else if self.peek_is(TokenKind::LParen) {
             // SMT-LIB 2.6 syntax: (declare-datatypes ((name arity)+) (dec+))
             let mut sort_decs = Vec::new();
             while !self.peek_is(TokenKind::RParen) {
@@ -389,12 +376,65 @@ impl<'a> Parser<'a> {
             self.expect_rparen()?;
 
             Some(Command::DeclareDatatypes(sort_decs, decs))
+        } else {
+            // Z3 parametric legacy: (declare-datatypes (T1 T2...) ((TypeName ctors...) ...))
+            let mut type_params = Vec::new();
+            while !self.peek_is(TokenKind::RParen) {
+                type_params.push(self.parse_spanned_symbol()?);
+            }
+            self.expect_rparen()?;
+            self.parse_legacy_datatypes_body(type_params)
         }
+    }
+
+    fn parse_legacy_datatypes_body(
+        &mut self,
+        type_params: Vec<Spanned<Symbol>>,
+    ) -> Option<Command> {
+        self.expect_lparen()?;
+        let mut sort_decs = Vec::new();
+        let mut decs = Vec::new();
+        while !self.peek_is(TokenKind::RParen) {
+            // Each entry: (TypeName (Ctor (sel Sort)?)+ )
+            let lp = self.expect_lparen()?;
+            let name = self.parse_spanned_symbol()?;
+            let mut ctors = Vec::new();
+            while !self.peek_is(TokenKind::RParen) {
+                ctors.push(self.parse_constructor_dec()?);
+            }
+            let rp = self.expect_rparen()?;
+            sort_decs.push((name.clone(), type_params.len() as u64));
+            decs.push(Spanned::new(
+                DatatypeDec {
+                    params: type_params.clone(),
+                    constructors: ctors,
+                },
+                Span::new(lp.span.start, rp.span.end),
+            ));
+        }
+        self.expect_rparen()?;
+        Some(Command::DeclareDatatypes(sort_decs, decs))
     }
 
     fn parse_assert(&mut self) -> Option<Command> {
         let term = self.parse_term()?;
         Some(Command::Assert(term))
+    }
+
+    fn parse_check_sat(&mut self) -> Option<Command> {
+        // Z3 extension: (check-sat term*) without wrapping parens
+        if self.peek_is(TokenKind::RParen) {
+            return Some(Command::CheckSat);
+        }
+        // There are arguments — parse as check-sat-assuming (Z3 shorthand)
+        let mut terms = Vec::new();
+        while !self.peek_is(TokenKind::RParen) {
+            if self.peek().is_none() {
+                break;
+            }
+            terms.push(self.parse_term()?);
+        }
+        Some(Command::CheckSatAssuming(terms))
     }
 
     fn parse_check_sat_assuming(&mut self) -> Option<Command> {
@@ -493,15 +533,23 @@ impl<'a> Parser<'a> {
             self.expect_rparen()?;
             self.expect_lparen()?;
             let mut ctors = Vec::new();
-            while !self.peek_is(TokenKind::RParen) {
+            while !self.peek_is(TokenKind::RParen) && !self.peek_is(TokenKind::Keyword) {
                 ctors.push(self.parse_constructor_dec()?);
+            }
+            // Skip trailing attributes (Z3 extension, e.g., :subterm)
+            while self.peek_is(TokenKind::Keyword) {
+                self.parse_attribute()?;
             }
             self.expect_rparen()?;
             (params, ctors)
         } else {
             let mut ctors = Vec::new();
-            while !self.peek_is(TokenKind::RParen) {
+            while !self.peek_is(TokenKind::RParen) && !self.peek_is(TokenKind::Keyword) {
                 ctors.push(self.parse_constructor_dec()?);
+            }
+            // Skip trailing attributes (Z3 extension, e.g., :subterm)
+            while self.peek_is(TokenKind::Keyword) {
+                self.parse_attribute()?;
             }
             (Vec::new(), ctors)
         };
@@ -519,6 +567,19 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_constructor_dec(&mut self) -> Option<Spanned<ConstructorDec>> {
+        let tok = self.peek()?;
+        if tok.kind == TokenKind::Symbol || tok.kind == TokenKind::QuotedSymbol {
+            // Bare symbol constructor (nullary, no parens) — Z3 legacy extension
+            let name = self.parse_spanned_symbol()?;
+            let span = name.span;
+            return Some(Spanned::new(
+                ConstructorDec {
+                    name,
+                    selectors: Vec::new(),
+                },
+                span,
+            ));
+        }
         let lparen = self.expect_lparen()?;
         let start = lparen.span.start;
         let name = self.parse_spanned_symbol()?;
@@ -562,6 +623,24 @@ impl<'a> Parser<'a> {
                 let ident = Identifier::Indexed(sym, indices);
                 return Some(Spanned::new(
                     Sort::Simple(ident),
+                    Span::new(start, rparen.span.end),
+                ));
+            }
+
+            // Check for arrow sort: (-> sort+ sort)  — Z3 higher-order extension
+            if self.peek_is_symbol("->") {
+                self.next(); // consume ->
+                let mut params = Vec::new();
+                while !self.peek_is(TokenKind::RParen) {
+                    params.push(self.parse_sort()?);
+                }
+                let rparen = self.expect_rparen()?;
+                let ident = Identifier::Simple(Symbol {
+                    name: "->".to_string(),
+                    quoted: false,
+                });
+                return Some(Spanned::new(
+                    Sort::Parameterized(ident, params),
                     Span::new(start, rparen.span.end),
                 ));
             }
@@ -631,6 +710,7 @@ impl<'a> Parser<'a> {
                 "forall" => return self.parse_quantifier(start, true),
                 "exists" => return self.parse_quantifier(start, false),
                 "lambda" => return self.parse_lambda(start),
+                "choice" => return self.parse_choice(start),
                 "match" => return self.parse_match(start),
                 "!" => return self.parse_annotated(start),
                 "_" => {
@@ -654,6 +734,68 @@ impl<'a> Parser<'a> {
         }
 
         // Function application: (f args...)
+        // Check if function position is a compound term (nested application)
+        let tok = self.peek()?;
+        if tok.kind == TokenKind::LParen {
+            // Could be (as id sort), (_ sym idx+), or nested application ((f x) y)
+            let lparen_inner = self.next().unwrap();
+            let inner_start = lparen_inner.span.start;
+
+            // Check for as/_ which indicate qualified identifiers
+            if let Some(next_tok) = self.peek() {
+                let name = &self.src[next_tok.span.start as usize..next_tok.span.end as usize];
+                if name == "as" || name == "_" {
+                    let ident =
+                        self.parse_spanned_qualified_identifier_inner(inner_start)?;
+                    let func_span = ident.span;
+                    let func = Spanned::new(ident.node, func_span);
+                    let mut args = Vec::new();
+                    while !self.peek_is(TokenKind::RParen) {
+                        if self.peek().is_none() {
+                            break;
+                        }
+                        args.push(self.parse_term()?);
+                    }
+                    let rparen = self.expect_rparen()?;
+                    return Some(Spanned::new(
+                        Term::Application(func, args),
+                        Span::new(start, rparen.span.end),
+                    ));
+                }
+            }
+
+            // It's a nested application: ((f x) y) — parse inner as a compound term
+            let inner_term = self.parse_compound_term(inner_start)?;
+            // Now parse remaining args and build a nested application
+            let mut args = Vec::new();
+            while !self.peek_is(TokenKind::RParen) {
+                if self.peek().is_none() {
+                    break;
+                }
+                args.push(self.parse_term()?);
+            }
+            let rparen = self.expect_rparen()?;
+            // Represent as application of a synthetic identifier wrapping the inner term
+            // For the AST, we'll treat this as an application where the function is the
+            // inner term. We need to handle this as a special case.
+            // Use the inner term span as the identifier.
+            let func_ident = QualifiedIdentifier::Simple(Spanned::new(
+                Identifier::Simple(Symbol {
+                    name: String::new(),
+                    quoted: false,
+                }),
+                inner_term.span,
+            ));
+            let func = Spanned::new(func_ident, inner_term.span);
+            // Prepend the inner term as first argument for consistent representation
+            let mut all_args = vec![inner_term];
+            all_args.extend(args);
+            return Some(Spanned::new(
+                Term::Application(func, all_args),
+                Span::new(start, rparen.span.end),
+            ));
+        }
+
         let func = self.parse_spanned_qualified_identifier()?;
         let mut args = Vec::new();
         while !self.peek_is(TokenKind::RParen) {
@@ -722,6 +864,25 @@ impl<'a> Parser<'a> {
         let rparen = self.expect_rparen()?;
         Some(Spanned::new(
             Term::Lambda(vars, Box::new(body)),
+            Span::new(start, rparen.span.end),
+        ))
+    }
+
+    fn parse_choice(&mut self, start: u32) -> Option<Spanned<Term>> {
+        // Z3 Hilbert choice: (choice ((x T)+) body)
+        // Same structure as exists/forall
+        self.next(); // consume 'choice'
+        self.expect_lparen()?;
+        let mut vars = Vec::new();
+        while !self.peek_is(TokenKind::RParen) {
+            vars.push(self.parse_sorted_var()?);
+        }
+        self.expect_rparen()?;
+        let body = self.parse_term()?;
+        let rparen = self.expect_rparen()?;
+        // Represent choice as Exists for AST purposes (same binding structure)
+        Some(Spanned::new(
+            Term::Exists(vars, Box::new(body)),
             Span::new(start, rparen.span.end),
         ))
     }
@@ -950,6 +1111,32 @@ impl<'a> Parser<'a> {
                     }
                 };
                 Some(Index::Symbol(name))
+            }
+            TokenKind::LParen => {
+                // Z3 extension: s-expression index like (+ (Int Int) Int)
+                // Skip the balanced content and represent as a symbol index
+                let start = tok.span.start;
+                let mut depth = 1u32;
+                while let Some(t) = self.next() {
+                    match t.kind {
+                        TokenKind::LParen => depth += 1,
+                        TokenKind::RParen => {
+                            depth -= 1;
+                            if depth == 0 {
+                                let text = &self.src[start as usize..t.span.end as usize];
+                                return Some(Index::Symbol(Symbol {
+                                    name: text.to_string(),
+                                    quoted: false,
+                                }));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Some(Index::Symbol(Symbol {
+                    name: String::new(),
+                    quoted: false,
+                }))
             }
             _ => {
                 self.error(tok.span, "expected index (numeral or symbol)");
