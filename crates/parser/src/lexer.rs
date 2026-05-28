@@ -135,6 +135,10 @@ impl<'a> Lexer<'a> {
                         break;
                     }
                 }
+                Some(b'\\') => {
+                    // SMT-LIB v2.0/v2.5 backslash escapes (e.g., \")
+                    self.advance(); // skip the escaped character
+                }
                 Some(_) => {}
                 None => break, // unterminated string
             }
@@ -194,6 +198,18 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 Token::new(TokenKind::Binary, start, self.pos)
+            }
+            Some(b'f' | b'F') => {
+                // CVC5 finite field literal: #f<value>m<modulus>
+                self.advance();
+                while let Some(b) = self.peek() {
+                    if b.is_ascii_alphanumeric() {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                Token::new(TokenKind::Numeral, start, self.pos)
             }
             _ => {
                 // Unknown # literal, treat as error

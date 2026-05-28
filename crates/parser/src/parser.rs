@@ -195,7 +195,7 @@ impl<'a> Parser<'a> {
             "reset-assertions" => Some(Command::ResetAssertions),
             "get-model" => Some(Command::GetModel),
             "get-value" => self.parse_get_value(),
-            "get-proof" => Some(Command::GetProof),
+            "get-proof" => self.parse_get_proof(),
             "get-unsat-core" => Some(Command::GetUnsatCore),
             "get-unsat-assumptions" => Some(Command::GetUnsatAssumptions),
             "get-assertions" => Some(Command::GetAssertions),
@@ -473,6 +473,14 @@ impl<'a> Parser<'a> {
         }
         self.expect_rparen()?;
         Some(Command::GetValue(terms))
+    }
+
+    fn parse_get_proof(&mut self) -> Option<Command> {
+        // CVC5 extension: (get-proof :component) — skip optional keyword argument
+        while self.peek_is(TokenKind::Keyword) {
+            self.next();
+        }
+        Some(Command::GetProof)
     }
 
     fn parse_echo(&mut self) -> Option<Command> {
@@ -1111,6 +1119,14 @@ impl<'a> Parser<'a> {
                     }
                 };
                 Some(Index::Symbol(name))
+            }
+            TokenKind::Hexadecimal | TokenKind::Binary => {
+                // (_ char #x0D4) or similar — hex/binary as index
+                let text = self.text(&tok).to_string();
+                Some(Index::Symbol(Symbol {
+                    name: text,
+                    quoted: false,
+                }))
             }
             TokenKind::LParen => {
                 // Z3 extension: s-expression index like (+ (Int Int) Int)
